@@ -1,0 +1,10 @@
+# 不纳入版本控制的文件
+.workbuddy/
+__pycache__/
+*.pyc
+*.pyo
+sync_store.json
+sync_store.json.tmp
+questions.json
+test_app.js
+_check.html

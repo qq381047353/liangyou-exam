@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#c8922f" />
+  <title>粮油保管员 · 在线刷题</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- 首页 -->
+    <section id="home" class="screen active">
+      <div class="home-head">
+        <div>
+          <div class="home-title">粮油保管员刷题</div>
+        </div>
+        <button id="theme-btn" class="theme-btn">🌓 主题</button>
+      </div>
+      <div class="home-sub">800 题 · 单选 639 + 判断 161，含逐题解析。数据存本机，不上传。</div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="num" id="st-total">0</div><div class="lbl">总题数</div></div>
+        <div class="stat"><div class="num" id="st-done">0</div><div class="lbl">已练习</div></div>
+        <div class="stat"><div class="num" id="st-wrong">0</div><div class="lbl">错题</div></div>
+        <div class="stat"><div class="num" id="st-fav">0</div><div class="lbl">收藏</div></div>
+      </div>
+
+      <div class="modes">
+        <div class="mode-card full accent" data-mode="all">
+          <div class="mc-title">顺序练习（全部 800 题）</div>
+          <div class="mc-desc">从第 1 题开始，系统判分并自动收录错题</div>
+        </div>
+        <div class="mode-card" data-mode="random">
+          <div class="mc-title">随机练习</div>
+          <div class="mc-desc">打乱顺序，检验掌握度</div>
+        </div>
+        <div class="mode-card" data-mode="single">
+          <div class="mc-title">单选题专项</div>
+          <div class="mc-desc">639 道单选题</div>
+        </div>
+        <div class="mode-card" data-mode="judge">
+          <div class="mc-title">判断题专项</div>
+          <div class="mc-desc">161 道判断题</div>
+        </div>
+        <div class="mode-card" data-mode="wrong">
+          <div class="mc-title">错题重练</div>
+          <div class="mc-desc">只练曾经答错的题</div>
+        </div>
+        <div class="mode-card" data-mode="fav">
+          <div class="mc-title">我的收藏</div>
+          <div class="mc-desc">星标题目集中回看</div>
+        </div>
+      </div>
+
+      <div class="note">💡 答错的题自动进入错题本，可随时重练；点 ☆ 收藏重点题。</div>
+
+      <div class="backup-card">
+        <div class="bc-title">☁ 数据备份与恢复</div>
+        <div class="bc-desc">错题、收藏存在本机浏览器，换电脑/浏览器会丢失。导出备份文件，在新设备导入即可恢复（可多次合并）。</div>
+        <div class="bottombar" style="margin-top:12px">
+          <button id="export-btn" class="btn">导出备份</button>
+          <button id="import-btn" class="btn">导入备份</button>
+        </div>
+        <input id="import-file" type="file" accept="application/json,.json" style="display:none" />
+      </div>
+
+      <div class="backup-card" style="border-color:var(--blue)">
+        <div class="bc-title">🔄 云端同步（推荐）</div>
+        <div class="bc-desc">设一串只有你自己知道的「同步码」。任意电脑/手机输入同一同步码，错题与收藏自动加密同步。服务器只存密文，看不到内容。</div>
+        <div id="sync-status" class="bc-desc"></div>
+        <div id="sync-setup" style="margin-top:10px">
+          <input id="sync-code-input" type="text" placeholder="输入同步码（建议长一点，如一句短语）" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--text);font-size:15px" />
+          <div class="bottombar" style="margin-top:10px">
+            <button id="sync-save-code" class="btn primary">启用同步</button>
+          </div>
+        </div>
+        <div id="sync-actions" style="display:none;margin-top:10px">
+          <div class="bottombar">
+            <button id="sync-push" class="btn">上传到云端</button>
+            <button id="sync-pull" class="btn">从云端拉取</button>
+          </div>
+          <div class="bottombar">
+            <button id="sync-change" class="btn">更换同步码</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 答题 -->
+    <section id="quiz" class="screen">
+      <div class="topbar">
+        <button id="quiz-back" class="back-btn">‹ 返回</button>
+        <span id="q-tag" class="tag">单选</span>
+        <span id="timer" class="timer">00:00</span>
+      </div>
+      <div id="progress" class="progress"><i></i></div>
+      <div id="q-no" class="q-no"></div>
+      <div id="q-text" class="q-text"></div>
+      <div id="options" class="options"></div>
+      <div id="analysis" class="analysis"></div>
+
+      <div class="bottombar">
+        <button id="prev-btn" class="btn">上一题</button>
+        <button id="star" class="star">☆</button>
+        <button id="sheet-btn" class="btn">答题卡</button>
+        <button id="next-btn" class="btn primary">下一题</button>
+      </div>
+    </section>
+
+    <!-- 结果 -->
+    <section id="result" class="screen">
+      <div class="result-card">
+        <div class="rate" id="r-rate">0%</div>
+        <div class="rate-sub" id="r-sub"></div>
+        <div class="result-stats">
+          <div>答对<b id="r-right">0</b></div>
+          <div>答错<b id="r-wrong">0</b></div>
+        </div>
+      </div>
+      <div class="bottombar">
+        <button id="result-home" class="btn">返回首页</button>
+        <button id="result-wrong" class="btn">查看错题</button>
+        <button id="result-again" class="btn primary">再来一组</button>
+      </div>
+    </section>
+
+    <!-- 错题 / 收藏 -->
+    <section id="wrongbook" class="screen">
+      <div class="topbar">
+        <button id="wb-back" class="back-btn">‹ 返回</button>
+        <span style="font-size:17px;font-weight:700">我的题库</span>
+      </div>
+      <div class="tabs">
+        <div id="tab-wrong" class="tab on">错题本</div>
+        <div id="tab-fav" class="tab">收藏夹</div>
+      </div>
+      <button id="wb-practice" class="btn primary" style="display:none;margin-bottom:14px">开始练习</button>
+      <div id="wb-list" class="list"></div>
+      <button id="wb-clear" class="clear-btn" style="display:none">清空当前列表</button>
+    </section>
+
+  </div>
+
+  <!-- 答题卡浮层 -->
+  <div id="sheet-mask" class="sheet-mask">
+    <div class="sheet">
+      <h3>答题卡</h3>
+      <div id="sheet-grid" class="sheet-grid"></div>
+      <div class="legend">
+        <span><i style="background:var(--green-soft);border:1px solid var(--green)"></i>答对</span>
+        <span><i style="background:var(--red-soft);border:1px solid var(--red)"></i>答错</span>
+        <span><i style="background:var(--bg);border:1px solid var(--line)"></i>未答</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+  <script src="sync.js"></script>
+</body>
+</html>
