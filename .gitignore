@@ -5,6 +5,10 @@ __pycache__/
 *.pyo
 sync_store.json
 sync_store.json.tmp
+sync.db
+sync.db-journal
+sync.db-wal
+sync.db-shm
 questions.json
 test_app.js
 _check.html

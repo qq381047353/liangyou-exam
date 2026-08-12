@@ -11,7 +11,6 @@
     fav: "lsb_fav_v1",
     done: "lsb_done_v1",
     theme: "lsb_theme_v1",
-    syncCode: "lsb_sync_code_v1",
   };
 
   // ---------- 存储 ----------
@@ -423,13 +422,11 @@
     };
   }
 
-  // ---------- 云端同步桥接 ----------
+  // ---------- 云端同步桥接（由 sync.js 调用） ----------
   window.LSB = {
     get: function () { return { wrong: wrongIds.slice(), fav: favIds.slice(), done: doneIds.slice() }; },
     merge: function (d) { mergeData(d); },
     onChange: function (cb) { changeCb = cb; },
-    code: function () { return load(LS.syncCode, ""); },
-    setCode: function (c) { save(LS.syncCode, c); },
   };
   window.toast = toast;
 

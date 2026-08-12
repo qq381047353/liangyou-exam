@@ -67,24 +67,8 @@
       </div>
 
       <div class="backup-card" style="border-color:var(--blue)">
-        <div class="bc-title">🔄 云端同步（推荐）</div>
-        <div class="bc-desc">设一串只有你自己知道的「同步码」。任意电脑/手机输入同一同步码，错题与收藏自动加密同步。服务器只存密文，看不到内容。</div>
-        <div id="sync-status" class="bc-desc"></div>
-        <div id="sync-setup" style="margin-top:10px">
-          <input id="sync-code-input" type="text" placeholder="输入同步码（建议长一点，如一句短语）" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--text);font-size:15px" />
-          <div class="bottombar" style="margin-top:10px">
-            <button id="sync-save-code" class="btn primary">启用同步</button>
-          </div>
-        </div>
-        <div id="sync-actions" style="display:none;margin-top:10px">
-          <div class="bottombar">
-            <button id="sync-push" class="btn">上传到云端</button>
-            <button id="sync-pull" class="btn">从云端拉取</button>
-          </div>
-          <div class="bottombar">
-            <button id="sync-change" class="btn">更换同步码</button>
-          </div>
-        </div>
+        <div class="bc-title">👤 我的账户（云端同步）</div>
+        <div id="account-body"></div>
       </div>
     </section>
 
