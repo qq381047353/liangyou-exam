@@ -11,7 +11,11 @@
     fav: "lsb_fav_v1",
     done: "lsb_done_v1",
     theme: "lsb_theme_v1",
+    progress: "lsb_progress_v1",
   };
+
+  // 可断点续刷的模式（顺序/随机/单选/判断）；错题本、收藏为动态集合，不续
+  var RESUMABLE = { all: 1, random: 1, single: 1, judge: 1 };
 
   // ---------- 存储 ----------
   function load(key, def) {
@@ -23,6 +27,7 @@
   var wrongIds = load(LS.wrong, []);   // 错题 id 数组（去重）
   var favIds = load(LS.fav, []);       // 收藏 id 数组
   var doneIds = load(LS.done, []);     // 已做过 id 数组
+  var progress = load(LS.progress, {});// 各模式练习进度 {mode:{ids,answers,idx,ts}}
 
   var changeCb = null;                 // 云端同步用：数据变更通知
   function notifyChange() { if (changeCb) changeCb(); }
@@ -36,6 +41,16 @@
     if (Array.isArray(d.wrong)) d.wrong.forEach(function (id) { if (typeof id === "number") addUnique(wrongIds, id); });
     if (Array.isArray(d.fav)) d.fav.forEach(function (id) { if (typeof id === "number") addUnique(favIds, id); });
     if (Array.isArray(d.done)) d.done.forEach(function (id) { if (typeof id === "number") addUnique(doneIds, id); });
+    if (d.progress && typeof d.progress === "object") {
+      for (var m in d.progress) {
+        if (!RESUMABLE[m]) continue;
+        var p = d.progress[m];
+        if (p && Array.isArray(p.ids) && p.ids.length && typeof p.answers === "object") {
+          progress[m] = { ids: p.ids, answers: p.answers, idx: p.idx || 0, ts: p.ts || 0 };
+        }
+      }
+      save(LS.progress, progress);
+    }
     save(LS.wrong, wrongIds); save(LS.fav, favIds); save(LS.done, doneIds);
     renderHome();
   }
@@ -94,6 +109,23 @@
     $("#st-wrong").textContent = wrongIds.length;
     $("#st-fav").textContent = favIds.length;
     $("#st-done").textContent = doneIds.length;
+    renderResumeHint();
+  }
+
+  // 首页「顺序练习」卡片上的续刷提示
+  function renderResumeHint() {
+    var el = $("#mc-resume-all");
+    if (!el) return;
+    var p = progress.all;
+    if (p && Array.isArray(p.ids) && p.ids.length) {
+      var done = 0;
+      for (var k in p.answers) if (p.answers.hasOwnProperty(k) && p.answers[k] != null) done++;
+      var total = p.ids.length;
+      el.textContent = "↳ 继续：已做 " + done + " 题，从第 " + ((p.idx || 0) + 1) + " 题接着刷";
+      el.style.display = "block";
+    } else {
+      el.style.display = "none";
+    }
   }
 
   function startQuiz(mode) {
@@ -118,9 +150,63 @@
       S.list = ALL.filter(function (q) { return fset[q.id]; });
       if (S.list.length === 0) { toast("还没有收藏，点星标即可收藏"); return; }
     }
+
+    // 断点续刷：可续模式且存在进度时，恢复题序、作答与位置
+    if (RESUMABLE[mode] && restoreProgress(mode)) {
+      renderResumeHint();
+      show("#quiz");
+      renderQuestion();
+      return;
+    }
     S.idx = 0;
     show("#quiz");
     renderQuestion();
+  }
+
+  // 从已存进度恢复当前模式的题序 / 作答 / 位置，返回是否成功
+  function restoreProgress(mode) {
+    var p = progress[mode];
+    if (!p || !Array.isArray(p.ids) || !p.ids.length || typeof p.answers !== "object") return false;
+    var byId = {};
+    ALL.forEach(function (q) { byId[q.id] = q; });
+    var list = [];
+    p.ids.forEach(function (id) { if (byId[id]) list.push(byId[id]); });
+    if (!list.length) return false;
+    // 若当前模式集合比存档更长（如新增题），把缺失题补到末尾，保证全集完整
+    if (list.length < S.list.length) {
+      S.list.forEach(function (q) { if (list.indexOf(q) === -1) list.push(q); });
+    }
+    S.list = list;
+    S.answers = p.answers;
+    S.idx = Math.min(typeof p.idx === "number" ? p.idx : 0, S.list.length - 1);
+    S.sessionRight = 0; S.sessionWrong = {}; S.sessionTotal = 0;
+    for (var k in S.answers) {
+      if (!S.answers.hasOwnProperty(k)) continue;
+      var q = byId[+k];
+      if (!q) continue;
+      S.sessionTotal++;
+      if (S.answers[k] === q.answer) S.sessionRight++;
+      else S.sessionWrong[q.id] = true;
+    }
+    return true;
+  }
+
+  // 保存当前模式进度到本地（并随账户云端同步）
+  function saveProgress() {
+    if (!RESUMABLE[S.mode]) return;
+    progress[S.mode] = {
+      ids: S.list.map(function (q) { return q.id; }),
+      answers: S.answers,
+      idx: S.idx,
+      ts: Date.now(),
+    };
+    save(LS.progress, progress);
+    notifyChange();
+  }
+
+  // 清除某模式进度（交卷 / 主动重来）
+  function clearProgress(mode) {
+    if (progress[mode]) { delete progress[mode]; save(LS.progress, progress); notifyChange(); }
   }
 
   // ---------- 渲染题目 ----------
@@ -194,6 +280,7 @@
         if (right) { S.sessionRight++; }
         else { S.sessionWrong[q.id] = true; addUnique(wrongIds, q.id); save(LS.wrong, wrongIds); }
         addUnique(doneIds, q.id); save(LS.done, doneIds);
+        saveProgress();
         S.sessionTotal++;
         paintAnswer(q);
         showAnalysis(q, false);
@@ -234,9 +321,9 @@
     if (S.idx === S.list.length - 1) {
       if (S.isReview) { show("#home"); renderHome(); toast("回顾结束"); }
       else finishQuiz();
-    } else { S.idx++; renderQuestion(); }
+    } else { S.idx++; renderQuestion(); saveProgress(); }
   }
-  function prevQ() { if (S.idx > 0) { S.idx--; renderQuestion(); } }
+  function prevQ() { if (S.idx > 0) { S.idx--; renderQuestion(); saveProgress(); } }
 
   function toggleStar() {
     var q = S.list[S.idx];
@@ -272,6 +359,7 @@
 
   // ---------- 交卷 / 结果 ----------
   function finishQuiz() {
+    clearProgress(S.mode);
     var total = S.sessionTotal || S.list.length;
     var right = S.sessionRight;
     var rate = total ? Math.round((right / total) * 100) : 0;
@@ -403,7 +491,18 @@
     $("#star").onclick = toggleStar;
     $("#sheet-btn").onclick = openSheet;
     $("#sheet-mask").onclick = function (e) { if (e.target === this) closeSheet(); };
-    $("#quiz-back").onclick = function () { if (S.isReview) { S.isReview = false; openWrongBook(S.wbTab); } else { show("#home"); renderHome(); } };
+    $("#quiz-back").onclick = function () { if (S.isReview) { S.isReview = false; openWrongBook(S.wbTab); } else { saveProgress(); show("#home"); renderHome(); } };
+    $("#quiz-restart").onclick = function () {
+      if (!confirm("重新开始本组？当前进度将清空，从第 1 题开始。")) return;
+      clearProgress(S.mode);
+      S.answers = {}; S.sessionWrong = {}; S.sessionRight = 0; S.sessionTotal = 0;
+      if (S.mode === "all") S.list = ALL.slice();
+      else if (S.mode === "random") S.list = shuffle(ALL);
+      else if (S.mode === "single") S.list = SINGLE.slice();
+      else if (S.mode === "judge") S.list = JUDGE.slice();
+      S.idx = 0; renderQuestion(); renderResumeHint();
+      toast("已重新开始");
+    };
     $("#result-home").onclick = function () { show("#home"); renderHome(); };
     $("#result-again").onclick = function () { startQuiz(S.mode); };
     $("#result-wrong").onclick = function () { openWrongBook("wrong"); };
@@ -424,7 +523,7 @@
 
   // ---------- 云端同步桥接（由 sync.js 调用） ----------
   window.LSB = {
-    get: function () { return { wrong: wrongIds.slice(), fav: favIds.slice(), done: doneIds.slice() }; },
+    get: function () { return { wrong: wrongIds.slice(), fav: favIds.slice(), done: doneIds.slice(), progress: JSON.parse(JSON.stringify(progress)) }; },
     merge: function (d) { mergeData(d); },
     onChange: function (cb) { changeCb = cb; },
   };
