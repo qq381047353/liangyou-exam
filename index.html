@@ -53,6 +53,11 @@
           <div class="mc-title">我的收藏</div>
           <div class="mc-desc">星标题目集中回看</div>
         </div>
+        <div class="mode-card accent" data-mode="exam">
+          <div class="mc-title">模拟考试</div>
+          <div class="mc-desc">限时随机组卷，交卷看成绩与是否及格</div>
+          <div class="mc-resume" id="mc-resume-exam" style="display:none"></div>
+        </div>
       </div>
 
       <div class="note">💡 答错的题自动进入错题本，可随时重练；点 ☆ 收藏重点题。</div>
@@ -99,6 +104,7 @@
     <section id="result" class="screen">
       <div class="result-card">
         <div class="rate" id="r-rate">0%</div>
+        <div class="r-pass" id="r-pass"></div>
         <div class="rate-sub" id="r-sub"></div>
         <div class="result-stats">
           <div>答对<b id="r-right">0</b></div>
@@ -134,10 +140,45 @@
     <div class="sheet">
       <h3>答题卡</h3>
       <div id="sheet-grid" class="sheet-grid"></div>
-      <div class="legend">
+      <div class="legend" id="sheet-legend">
         <span><i style="background:var(--green-soft);border:1px solid var(--green)"></i>答对</span>
         <span><i style="background:var(--red-soft);border:1px solid var(--red)"></i>答错</span>
         <span><i style="background:var(--bg);border:1px solid var(--line)"></i>未答</span>
+      </div>
+      <button id="sheet-submit" class="btn primary" style="display:none;margin-top:14px">交卷</button>
+    </div>
+  </div>
+
+  <!-- 模拟考试配置 -->
+  <div id="exam-mask" class="sheet-mask">
+    <div class="sheet exam-sheet">
+      <h3>模拟考试设置</h3>
+      <div class="exam-field">
+        <label>题量</label>
+        <div class="seg" id="exam-count">
+          <span data-v="50">50</span><span data-v="100" class="on">100</span><span data-v="200">200</span><span data-v="0">全量</span>
+        </div>
+      </div>
+      <div class="exam-field">
+        <label>题型</label>
+        <div class="seg" id="exam-type">
+          <span data-v="mix" class="on">混合</span><span data-v="single">仅单选</span><span data-v="judge">仅判断</span>
+        </div>
+      </div>
+      <div class="exam-field">
+        <label>时长（分钟）</label>
+        <input id="exam-mins" class="acc-input" type="number" min="1" value="90" />
+      </div>
+      <div class="exam-field">
+        <label>及格线</label>
+        <div class="seg" id="exam-pass">
+          <span data-v="60" class="on">60%</span><span data-v="70">70%</span><span data-v="80">80%</span>
+        </div>
+      </div>
+      <div id="exam-history" class="exam-history"></div>
+      <div class="bottombar">
+        <button id="exam-cancel" class="btn">取消</button>
+        <button id="exam-start" class="btn primary">开始考试</button>
       </div>
     </div>
   </div>

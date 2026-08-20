@@ -12,10 +12,11 @@
     done: "lsb_done_v1",
     theme: "lsb_theme_v1",
     progress: "lsb_progress_v1",
+    exam: "lsb_exam_history_v1",
   };
 
-  // 可断点续刷的模式（顺序/随机/单选/判断）；错题本、收藏为动态集合，不续
-  var RESUMABLE = { all: 1, random: 1, single: 1, judge: 1 };
+  // 可断点续刷的模式（顺序/随机/单选/判断/模拟考）；错题本、收藏为动态集合，不续
+  var RESUMABLE = { all: 1, random: 1, single: 1, judge: 1, exam: 1 };
 
   // ---------- 存储 ----------
   function load(key, def) {
@@ -67,7 +68,14 @@
     startTime: 0,
     isReview: false,    // 错题/收藏回顾模式
     reviewList: [],
+    isExam: false,      // 模拟考模式
+    cfg: null,          // 模拟考配置 {count,type,mins,pass}
+    examDeadline: 0,    // 模拟考交卷截止时间戳
+    examWrongList: [],  // 本次模拟考错题（用于考后回顾）
+    lastWasExam: false, // 最近一次结果页是否来自模拟考
   };
+
+  var examHist = load(LS.exam, { best: 0, attempts: 0 });
 
   // ---------- 工具 ----------
   function $(sel) { return document.querySelector(sel); }
@@ -126,10 +134,25 @@
     } else {
       el.style.display = "none";
     }
+    // 模拟考进行中提示
+    var eel = $("#mc-resume-exam");
+    if (eel) {
+      var ep = progress.exam;
+      if (ep && Array.isArray(ep.ids) && ep.ids.length && (ep.deadline || 0) > Date.now()) {
+        var edone = 0;
+        for (var k2 in ep.answers) if (ep.answers.hasOwnProperty(k2) && ep.answers[k2] != null) edone++;
+        eel.textContent = "↳ 进行中：已做 " + edone + " 题，剩 " + fmtTime(ep.deadline - Date.now()) + "，点此续考";
+        eel.style.display = "block";
+      } else {
+        eel.style.display = "none";
+      }
+    }
   }
 
   function startQuiz(mode) {
     S.isReview = false;
+    S.isExam = false;
+    S.lastWasExam = false;
     S.mode = mode;
     S.answers = {};
     S.sessionWrong = {};
@@ -180,6 +203,8 @@
     S.answers = p.answers;
     S.idx = Math.min(typeof p.idx === "number" ? p.idx : 0, S.list.length - 1);
     S.sessionRight = 0; S.sessionWrong = {}; S.sessionTotal = 0;
+    if (typeof p.deadline === "number") S.examDeadline = p.deadline;
+    if (p.cfg && typeof p.cfg === "object") S.cfg = p.cfg;
     for (var k in S.answers) {
       if (!S.answers.hasOwnProperty(k)) continue;
       var q = byId[+k];
@@ -194,12 +219,14 @@
   // 保存当前模式进度到本地（并随账户云端同步）
   function saveProgress() {
     if (!RESUMABLE[S.mode]) return;
-    progress[S.mode] = {
+    var rec = {
       ids: S.list.map(function (q) { return q.id; }),
       answers: S.answers,
       idx: S.idx,
       ts: Date.now(),
     };
+    if (S.mode === "exam") { rec.deadline = S.examDeadline; rec.cfg = S.cfg; }
+    progress[S.mode] = rec;
     save(LS.progress, progress);
     notifyChange();
   }
@@ -217,7 +244,7 @@
     $("#q-tag").textContent = q.type;
     $("#q-tag").className = "tag" + (q.type === "判断" ? " judge" : "");
     $("#q-no").textContent = "第 " + (S.idx + 1) + " / " + S.list.length + " 题" +
-      (S.isReview ? "（回顾）" : "");
+      (S.isReview ? "（回顾）" : (S.isExam ? "（模拟考）" : ""));
     $("#q-text").textContent = q.question;
 
     var html = "";
@@ -231,9 +258,13 @@
     }
     var box = $("#options"); box.innerHTML = html;
 
-    // 已作答 -> 显示判定与解析
-    if (answered) paintAnswer(q);
-    else $("#analysis").classList.remove("show");
+    // 已作答：练习模式立即判分并展示解析；模拟考仅标记选中，交卷后才揭晓
+    if (answered) {
+      if (S.isExam) paintSel(q);
+      else paintAnswer(q);
+    } else {
+      $("#analysis").classList.remove("show");
+    }
 
     // 收藏星标
     var starred = favIds.indexOf(q.id) !== -1;
@@ -248,7 +279,9 @@
     // 底部按钮
     $("#prev-btn").disabled = S.idx === 0;
     var next = $("#next-btn");
-    if (S.idx === S.list.length - 1) {
+    if (S.isExam) {
+      next.textContent = (S.idx === S.list.length - 1) ? "交卷" : "下一题";
+    } else if (S.idx === S.list.length - 1) {
       next.textContent = S.isReview ? "完成回顾" : "交卷";
     } else {
       next.textContent = "下一题";
@@ -272,6 +305,14 @@
     box.querySelectorAll(".opt").forEach(function (el) {
       el.onclick = function () {
         if (S.isReview) return;
+        if (S.isExam) {
+          // 模拟考：仅记录/替换作答，不即时判分，可随时修改
+          S.answers[q.id] = el.getAttribute("data-key");
+          paintSel(q);
+          saveProgress();
+          renderProgress();
+          return;
+        }
         if (S.answers[q.id] != null) return; // 已答不可改
         var key = el.getAttribute("data-key");
         S.answers[q.id] = key;
@@ -288,6 +329,16 @@
         if (!right) renderHome();
         notifyChange();
       };
+    });
+  }
+
+  // 模拟考：仅高亮用户选中项，不显示对错
+  function paintSel(q) {
+    var sel = S.answers[q.id];
+    var box = $("#options");
+    box.querySelectorAll(".opt").forEach(function (el) {
+      el.classList.remove("sel", "correct", "wrong", "dim");
+      if (el.getAttribute("data-key") === sel) el.classList.add("sel");
     });
   }
 
@@ -320,6 +371,7 @@
   function nextQ() {
     if (S.idx === S.list.length - 1) {
       if (S.isReview) { show("#home"); renderHome(); toast("回顾结束"); }
+      else if (S.isExam) finishExam();
       else finishQuiz();
     } else { S.idx++; renderQuestion(); saveProgress(); }
   }
@@ -345,7 +397,10 @@
       cell.className = "cell";
       cell.textContent = (i + 1);
       var ans = S.answers[q.id];
-      if (ans != null) {
+      if (S.isExam) {
+        // 考试中：只显示已答/未答，不泄露对错
+        if (ans != null) cell.classList.add("ans");
+      } else if (ans != null) {
         if (ans === q.answer) cell.classList.add("right");
         else cell.classList.add("wrong");
       }
@@ -353,6 +408,19 @@
       (function (idx) { cell.onclick = function () { S.idx = idx; renderQuestion(); closeSheet(); }; })(i);
       grid.appendChild(cell);
     }
+    // 图例：考试中去对错化
+    var legend = $("#sheet-legend");
+    if (legend) {
+      if (S.isExam) {
+        legend.innerHTML = '<span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>已答</span>' +
+          '<span><i style="background:var(--bg);border:1px solid var(--line)"></i>未答</span>';
+      } else {
+        legend.innerHTML = '<span><i style="background:var(--green-soft);border:1px solid var(--green)"></i>答对</span>' +
+          '<span><i style="background:var(--red-soft);border:1px solid var(--red)"></i>答错</span>' +
+          '<span><i style="background:var(--bg);border:1px solid var(--line)"></i>未答</span>';
+      }
+    }
+    $("#sheet-submit").style.display = S.isExam ? "block" : "none";
     $("#sheet-mask").classList.add("show");
   }
   function closeSheet() { $("#sheet-mask").classList.remove("show"); }
@@ -360,6 +428,7 @@
   // ---------- 交卷 / 结果 ----------
   function finishQuiz() {
     clearProgress(S.mode);
+    S.lastWasExam = false;
     var total = S.sessionTotal || S.list.length;
     var right = S.sessionRight;
     var rate = total ? Math.round((right / total) * 100) : 0;
@@ -368,6 +437,118 @@
     $("#r-right").textContent = right;
     $("#r-wrong").textContent = (total - right);
     show("#result");
+  }
+
+  // ---------- 模拟考试 ----------
+  function buildPool(type) {
+    if (type === "single") return SINGLE.slice();
+    if (type === "judge") return JUDGE.slice();
+    return ALL.slice(); // mix
+  }
+
+  function readExamCfg() {
+    var count = parseInt($("#exam-count .on").getAttribute("data-v"), 10);
+    var type = $("#exam-type .on").getAttribute("data-v");
+    var mins = parseInt($("#exam-mins").value, 10);
+    if (!mins || mins < 1) mins = 90;
+    var pass = parseInt($("#exam-pass .on").getAttribute("data-v"), 10) || 60;
+    return { count: count, type: type, mins: mins, pass: pass };
+  }
+
+  function startExam(cfg) {
+    S.isExam = true;
+    S.lastWasExam = false;
+    S.mode = "exam";
+    S.cfg = cfg;
+    var pool = buildPool(cfg.type);
+    var count = cfg.count === 0 ? pool.length : Math.min(cfg.count, pool.length);
+    S.list = shuffle(pool).slice(0, count);
+    S.answers = {};
+    S.sessionWrong = {};
+    S.sessionRight = 0;
+    S.sessionTotal = 0;
+    S.idx = 0;
+    S.startTime = Date.now();
+    S.examDeadline = Date.now() + cfg.mins * 60000;
+    saveProgress();
+    show("#quiz");
+    renderQuestion();
+  }
+
+  function openExamConfig() {
+    renderExamHistory();
+    $("#exam-mask").classList.add("show");
+  }
+  function closeExamConfig() { $("#exam-mask").classList.remove("show"); }
+
+  // 点击模拟考卡片：有进行中的考试则续刷，否则打开配置
+  function onExamCard() {
+    var p = progress.exam;
+    if (p && Array.isArray(p.ids) && p.ids.length && (p.deadline || 0) > Date.now()) {
+      resumeExam();
+    } else {
+      if (p && (p.deadline || 0) <= Date.now()) clearProgress("exam");
+      openExamConfig();
+    }
+  }
+
+  function resumeExam() {
+    S.isExam = true;
+    S.lastWasExam = false;
+    S.mode = "exam";
+    if (restoreProgress("exam")) { show("#quiz"); renderQuestion(); }
+    else openExamConfig();
+  }
+
+  function finishExam() {
+    var total = S.list.length;
+    var right = 0;
+    var wrongList = [];
+    S.list.forEach(function (q) {
+      var a = S.answers[q.id];
+      if (a != null && a === q.answer) right++;
+      else { wrongList.push(q); addUnique(wrongIds, q.id); }
+    });
+    save(LS.wrong, wrongIds); // 模拟考错题并入全局错题本
+    var rate = total ? Math.round((right / total) * 100) : 0;
+    var pass = rate >= (S.cfg ? S.cfg.pass : 60);
+    $("#r-rate").textContent = rate + "%";
+    $("#r-pass").textContent = pass ? "✓ 及格" : "✗ 不及格";
+    $("#r-pass").className = "r-pass " + (pass ? "ok" : "no");
+    $("#r-sub").textContent = "共 " + total + " 题 · 答对 " + right + " · 用时 " + fmtTime(Date.now() - S.startTime);
+    $("#r-right").textContent = right;
+    $("#r-wrong").textContent = (total - right);
+    S.examWrongList = wrongList;
+    S.lastWasExam = true;
+    clearProgress("exam");
+    recordExamHistory(right, total, pass);
+    renderHome();
+    show("#result");
+  }
+
+  function recordExamHistory(right, total, pass) {
+    var rate = total ? Math.round((right / total) * 100) : 0;
+    examHist.attempts = (examHist.attempts || 0) + 1;
+    if (rate > (examHist.best || 0)) examHist.best = rate;
+    examHist.lastRate = rate;
+    examHist.lastPass = pass;
+    examHist.lastCfg = S.cfg;
+    save(LS.exam, examHist);
+  }
+
+  function renderExamHistory() {
+    var el = $("#exam-history");
+    if (!el) return;
+    if (!examHist.attempts) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = "已考 " + examHist.attempts + " 次 · 最佳 " + examHist.best +
+      "% · 上次 " + (examHist.lastRate || 0) + "%（" + (examHist.lastPass ? "及格" : "不及格") + "）";
+  }
+
+  // 考后回顾本场错题
+  function reviewExamWrong() {
+    if (!S.examWrongList.length) { toast("本场没有错题"); return; }
+    startReview(S.examWrongList, 0);
   }
 
   // ---------- 错题 / 收藏 ----------
@@ -420,6 +601,7 @@
   // ---------- 回顾模式 ----------
   function startReview(list, startIdx) {
     S.isReview = true;
+    S.isExam = false;
     S.reviewList = list;
     S.list = list;
     S.idx = startIdx || 0;
@@ -483,6 +665,7 @@
       var mode = el.getAttribute("data-mode");
       el.onclick = function () {
         if (mode === "wrong" || mode === "fav") openWrongBook(mode);
+        else if (mode === "exam") onExamCard();
         else startQuiz(mode);
       };
     });
@@ -493,9 +676,16 @@
     $("#sheet-mask").onclick = function (e) { if (e.target === this) closeSheet(); };
     $("#quiz-back").onclick = function () { if (S.isReview) { S.isReview = false; openWrongBook(S.wbTab); } else { saveProgress(); show("#home"); renderHome(); } };
     $("#quiz-restart").onclick = function () {
-      if (!confirm("重新开始本组？当前进度将清空，从第 1 题开始。")) return;
+      if (!confirm("重新开始？当前进度将清空，从第 1 题开始。")) return;
       clearProgress(S.mode);
       S.answers = {}; S.sessionWrong = {}; S.sessionRight = 0; S.sessionTotal = 0;
+      if (S.isExam) {
+        S.idx = 0;
+        S.examDeadline = Date.now() + (S.cfg ? S.cfg.mins : 90) * 60000;
+        saveProgress(); renderQuestion(); renderResumeHint();
+        toast("已重新开始");
+        return;
+      }
       if (S.mode === "all") S.list = ALL.slice();
       else if (S.mode === "random") S.list = shuffle(ALL);
       else if (S.mode === "single") S.list = SINGLE.slice();
@@ -504,13 +694,29 @@
       toast("已重新开始");
     };
     $("#result-home").onclick = function () { show("#home"); renderHome(); };
-    $("#result-again").onclick = function () { startQuiz(S.mode); };
-    $("#result-wrong").onclick = function () { openWrongBook("wrong"); };
+    $("#result-again").onclick = function () { if (S.lastWasExam && S.cfg) startExam(S.cfg); else startQuiz(S.mode); };
+    $("#result-wrong").onclick = function () { if (S.lastWasExam) reviewExamWrong(); else openWrongBook("wrong"); };
     $("#wb-back").onclick = function () { show("#home"); renderHome(); };
     $("#tab-wrong").onclick = function () { openWrongBook("wrong"); };
     $("#tab-fav").onclick = function () { openWrongBook("fav"); };
     $("#wb-clear").onclick = clearWB;
     $("#wb-practice").onclick = function () { startQuiz(S.wbTab); };
+    // 模拟考配置：分段选择 + 开始/取消 + 答题卡交卷
+    function bindSeg(id) {
+      var box = $("#" + id);
+      if (!box) return;
+      box.querySelectorAll("span").forEach(function (sp) {
+        sp.onclick = function () {
+          box.querySelectorAll("span").forEach(function (x) { x.classList.remove("on"); });
+          sp.classList.add("on");
+        };
+      });
+    }
+    bindSeg("exam-count"); bindSeg("exam-type"); bindSeg("exam-pass");
+    $("#exam-cancel").onclick = closeExamConfig;
+    $("#exam-start").onclick = function () { var cfg = readExamCfg(); closeExamConfig(); startExam(cfg); };
+    $("#sheet-submit").onclick = function () { closeSheet(); finishExam(); };
+
     $("#theme-btn").onclick = toggleTheme;
     $("#export-btn").onclick = exportData;
     $("#import-btn").onclick = function () { $("#import-file").click(); };
@@ -536,9 +742,15 @@
     bind();
     renderHome();
     show("#home");
-    // 计时器
+    // 计时器：练习模式显示已用时间；模拟考显示剩余时间，归零自动交卷
     setInterval(function () {
-      if ($("#quiz").classList.contains("active") && !S.isReview) {
+      if (!$("#quiz").classList.contains("active")) return;
+      if (S.isExam) {
+        var rem = S.examDeadline - Date.now();
+        if (rem <= 0) { $("#timer").textContent = "00:00"; finishExam(); return; }
+        $("#timer").textContent = fmtTime(rem);
+        $("#timer").classList.toggle("warn", rem <= 60000);
+      } else if (!S.isReview) {
         $("#timer").textContent = fmtTime(Date.now() - S.startTime);
       }
     }, 1000);

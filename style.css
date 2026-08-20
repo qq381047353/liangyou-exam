@@ -252,3 +252,26 @@ html, body {
 .toast.show { opacity: 1; }
 
 .review-tag { display:inline-block; font-size:11px; color:var(--muted); margin-bottom:6px; }
+
+/* ---------- 倒计时 / 答题卡 / 模拟考 ---------- */
+.timer.warn { color: var(--red); font-weight: 800; }
+.cell.ans { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.r-pass { font-size: 15px; font-weight: 800; margin-bottom: 10px; }
+.r-pass.ok { color: var(--green); }
+.r-pass.no { color: var(--red); }
+
+.exam-sheet h3 { margin: 0 0 14px; font-size: 17px; }
+.exam-field { margin-bottom: 14px; }
+.exam-field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.seg { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg span {
+  flex: 1; min-width: 56px; text-align: center; padding: 10px 6px; border-radius: 10px;
+  border: 1.5px solid var(--line); background: var(--bg); color: var(--text);
+  font-size: 14px; font-weight: 600; cursor: pointer; user-select: none;
+}
+.seg span.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.exam-history {
+  display: none; margin: 4px 0 14px; padding: 10px 12px; border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600;
+}
