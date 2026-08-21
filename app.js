@@ -264,6 +264,9 @@
       (S.isReview ? "（回顾）" : (S.isExam ? "（模拟考）" : ""));
     $("#q-text").textContent = q.question;
 
+    // 计时器：考试中显示倒计时，练习显示已用时；进入回顾（错题/收藏回顾）一律隐藏，避免残留倒计时
+    $("#timer").style.display = S.isReview ? "none" : "";
+
     var html = "";
     if (q.type === "单选") {
       q.options.forEach(function (o) {
@@ -537,6 +540,7 @@
     $("#r-wrong").textContent = (total - right);
     S.examWrongList = wrongList;
     S.lastWasExam = true;
+    S.isExam = false;        // 交卷后终止倒计时逻辑，避免后续界面仍走考试计时
     clearProgress("exam");
     recordExamHistory(right, total, pass);
     renderHome();
