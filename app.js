@@ -15,8 +15,21 @@
     exam: "lsb_exam_history_v1",
   };
 
-  // 可断点续刷的模式（顺序/随机/单选/判断/模拟考）；错题本、收藏为动态集合，不续
+  // 可断点续刷的模式（顺序/随机/单选/判断/模拟考 + 按章节 ch: 前缀）；错题本、收藏为动态集合，不续
   var RESUMABLE = { all: 1, random: 1, single: 1, judge: 1, exam: 1 };
+  function isResumable(mode) {
+    return RESUMABLE.hasOwnProperty(mode) || (typeof mode === "string" && mode.indexOf("ch:") === 0);
+  }
+  // 章节展示顺序（与 PDF 教材体系一致）；其余动态出现的章追加在末尾
+  var CHAPTER_ORDER = ["第一章 职业道德", "第二章 基础知识", "第三章 粮油出入库管理",
+    "第四章 粮情检查", "第五章 粮情控制", "未分章"];
+  function getChapters() {
+    var cnt = {};
+    ALL.forEach(function (q) { cnt[q.chapter] = (cnt[q.chapter] || 0) + 1; });
+    var names = CHAPTER_ORDER.filter(function (c) { return cnt[c]; });
+    Object.keys(cnt).forEach(function (c) { if (names.indexOf(c) === -1) names.push(c); });
+    return names.map(function (c) { return { name: c, count: cnt[c] }; });
+  }
 
   // ---------- 存储 ----------
   function load(key, def) {
@@ -44,7 +57,7 @@
     if (Array.isArray(d.done)) d.done.forEach(function (id) { if (typeof id === "number") addUnique(doneIds, id); });
     if (d.progress && typeof d.progress === "object") {
       for (var m in d.progress) {
-        if (!RESUMABLE[m]) continue;
+        if (!isResumable(m)) continue;
         var p = d.progress[m];
         if (p && Array.isArray(p.ids) && p.ids.length && typeof p.answers === "object") {
           progress[m] = { ids: p.ids, answers: p.answers, idx: p.idx || 0, ts: p.ts || 0 };
@@ -172,6 +185,10 @@
       var fset = {}; favIds.forEach(function (id) { fset[id] = 1; });
       S.list = ALL.filter(function (q) { return fset[q.id]; });
       if (S.list.length === 0) { toast("还没有收藏，点星标即可收藏"); return; }
+    } else if (mode.indexOf("ch:") === 0) {
+      var ch = mode.slice(3);
+      S.list = ALL.filter(function (q) { return q.chapter === ch; });
+      if (S.list.length === 0) { toast("该章节暂无题目"); return; }
     }
 
     // 断点续刷：可续模式且存在进度时，恢复题序、作答与位置
@@ -218,7 +235,7 @@
 
   // 保存当前模式进度到本地（并随账户云端同步）
   function saveProgress() {
-    if (!RESUMABLE[S.mode]) return;
+    if (!isResumable(S.mode)) return;
     var rec = {
       ids: S.list.map(function (q) { return q.id; }),
       answers: S.answers,
@@ -572,25 +589,80 @@
       box.innerHTML = '<div class="empty">' + (S.wbTab === "wrong" ? "暂无错题，继续保持～" : "还没有收藏，答题时点 ☆ 即可") + "</div>";
       return;
     }
-    list.forEach(function (q, i) {
-      var item = document.createElement("div");
-      item.className = "item";
-      var ansTxt = "正确答案：" + esc(q.answer);
-      item.innerHTML =
-        '<span class="badge' + (q.type === "判断" ? " judge" : "") + '">' + q.type + "</span>" +
-        '<div class="it-text">' + esc(q.question) +
-        '<div class="it-ans">' + ansTxt + "</div></div>" +
-        '<div class="it-del" title="移除">✕</div>';
-      item.querySelector(".it-text").onclick = function () { startReview(list, i); };
-      item.querySelector(".it-del").onclick = function (e) {
-        e.stopPropagation();
-        if (S.wbTab === "wrong") { removeId(wrongIds, q.id); save(LS.wrong, wrongIds); }
-        else { removeId(favIds, q.id); save(LS.fav, favIds); }
-        renderWB(); renderHome(); toast("已移除");
+    // 按章节分组展示
+    var groups = {};
+    list.forEach(function (q) { (groups[q.chapter] = groups[q.chapter] || []).push(q); });
+    var order = CHAPTER_ORDER.filter(function (c) { return groups[c]; });
+    Object.keys(groups).forEach(function (c) { if (order.indexOf(c) === -1) order.push(c); });
+    order.forEach(function (ch) {
+      var glist = groups[ch];
+      var group = document.createElement("div");
+      group.className = "wb-group";
+      var head = document.createElement("div");
+      head.className = "wb-group-head";
+      head.innerHTML = '<span class="arrow">▾</span><span class="g-name">' + esc(ch) +
+        '</span><span class="g-count">' + glist.length + " 题</span>";
+      var gp = document.createElement("button");
+      gp.className = "g-prac"; gp.textContent = "练本章";
+      head.appendChild(gp);
+      var items = document.createElement("div");
+      items.className = "wb-group-items";
+      glist.forEach(function (q, i) {
+        var item = document.createElement("div");
+        item.className = "item";
+        item.innerHTML =
+          '<span class="badge' + (q.type === "判断" ? " judge" : "") + '">' + q.type + "</span>" +
+          '<div class="it-text">' + esc(q.question) +
+          '<div class="it-ans">正确答案：' + esc(q.answer) + "</div></div>" +
+          '<div class="it-del" title="移除">✕</div>';
+        item.querySelector(".it-text").onclick = (function (qq, idx) {
+          return function () { startReview(glist, idx); };
+        })(q, i);
+        item.querySelector(".it-del").onclick = (function (qq) {
+          return function (e) {
+            e.stopPropagation();
+            if (S.wbTab === "wrong") { removeId(wrongIds, qq.id); save(LS.wrong, wrongIds); }
+            else { removeId(favIds, qq.id); save(LS.fav, favIds); }
+            renderWB(); renderHome(); toast("已移除");
+          };
+        })(q);
+        items.appendChild(item);
+      });
+      var toggle = function () {
+        var open = items.style.display !== "none";
+        items.style.display = open ? "none" : "block";
+        head.querySelector(".arrow").textContent = open ? "▸" : "▾";
       };
-      box.appendChild(item);
+      head.querySelector(".arrow").onclick = function (e) { e.stopPropagation(); toggle(); };
+      head.onclick = toggle;
+      gp.onclick = (function (g) {
+        return function (e) { e.stopPropagation(); startReview(g, 0); };
+      })(glist);
+      group.appendChild(head); group.appendChild(items);
+      box.appendChild(group);
     });
   }
+
+  // 章节选择浮层
+  function openChapterPicker() {
+    var list = $("#chapter-list"); list.innerHTML = "";
+    getChapters().forEach(function (c) {
+      var btn = document.createElement("button");
+      btn.className = "ch-btn";
+      var p = progress["ch:" + c.name];
+      var hint = "";
+      if (p && Array.isArray(p.ids) && p.ids.length) {
+        var dn = 0; for (var k in p.answers) if (p.answers[k] != null) dn++;
+        hint = ' <span class="ch-cont">· 继续(' + dn + "/" + p.ids.length + ")</span>";
+      }
+      btn.innerHTML = '<span class="ch-name">' + esc(c.name) + "</span>" +
+        '<span class="ch-count">' + c.count + " 题</span>" + hint;
+      btn.onclick = function () { closeChapterPicker(); startQuiz("ch:" + c.name); };
+      list.appendChild(btn);
+    });
+    $("#chapter-mask").classList.add("show");
+  }
+  function closeChapterPicker() { $("#chapter-mask").classList.remove("show"); }
   function clearWB() {
     if (!confirm("确定清空" + (S.wbTab === "wrong" ? "所有错题" : "所有收藏") + "？此操作不可恢复。")) return;
     if (S.wbTab === "wrong") { wrongIds = []; save(LS.wrong, wrongIds); }
@@ -666,6 +738,7 @@
       el.onclick = function () {
         if (mode === "wrong" || mode === "fav") openWrongBook(mode);
         else if (mode === "exam") onExamCard();
+        else if (mode === "chapters") openChapterPicker();
         else startQuiz(mode);
       };
     });
@@ -717,6 +790,8 @@
     $("#exam-start").onclick = function () { var cfg = readExamCfg(); closeExamConfig(); startExam(cfg); };
     $("#sheet-submit").onclick = function () { closeSheet(); finishExam(); };
 
+    $("#chapter-cancel").onclick = closeChapterPicker;
+    $("#chapter-mask").onclick = function (e) { if (e.target === this) closeChapterPicker(); };
     $("#theme-btn").onclick = toggleTheme;
     $("#export-btn").onclick = exportData;
     $("#import-btn").onclick = function () { $("#import-file").click(); };

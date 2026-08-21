@@ -275,3 +275,30 @@ html, body {
   display: none; margin: 4px 0 14px; padding: 10px 12px; border-radius: 10px;
   background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600;
 }
+
+/* ---------- 章节选择 / 错题分组 ---------- */
+.chapter-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.ch-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; border: 1.5px solid var(--line); border-radius: 12px;
+  background: var(--bg); color: var(--text); font-size: 15px; font-weight: 700;
+  cursor: pointer; text-align: left;
+}
+.ch-btn:active { background: var(--accent-soft); }
+.ch-name { flex: 1; }
+.ch-count { color: var(--muted); font-size: 13px; font-weight: 500; }
+.ch-cont { color: var(--accent); font-size: 12px; margin-left: 8px; }
+
+.wb-group { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.wb-group-head {
+  display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  background: var(--bg); cursor: pointer; font-weight: 700; font-size: 15px;
+}
+.wb-group-head .arrow { width: 16px; color: var(--muted); flex: 0 0 auto; }
+.wb-group-head .g-name { flex: 1; }
+.wb-group-head .g-count { color: var(--muted); font-size: 13px; font-weight: 500; }
+.wb-group-head .g-prac {
+  padding: 5px 12px; font-size: 13px; border: 1.5px solid var(--accent);
+  color: var(--accent); background: transparent; border-radius: 8px; font-weight: 600;
+}
+.wb-group-items { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 10px; }
